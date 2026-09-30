@@ -41,19 +41,6 @@ TEST_F(ServicesStandaloneGQ4, genDraws_gq_test_vec_len_1) {
   csv_stream.close();
   EXPECT_EQ("b[1]", multidim_csv.header[7]);
 
-  // model bug_2390_model has 1 param, vector[1] b;
-  std::vector<std::string> param_names;
-  std::vector<std::vector<size_t>> param_dimss;
-  stan::services::get_model_parameters(*model, param_names, param_dimss);
-
-  EXPECT_EQ(param_names.size(), 1);
-  EXPECT_EQ(param_dimss.size(), 1);
-  int total = 1;
-  for (size_t i = 0; i < param_dimss[0].size(); ++i) {
-    total *= param_dimss[0][i];
-  }
-  EXPECT_EQ(total, 1);
-
   std::stringstream sample_ss;
   stan::callbacks::stream_writer sample_writer(sample_ss, "");
   int return_code = stan::services::standalone_generate(
@@ -61,6 +48,6 @@ TEST_F(ServicesStandaloneGQ4, genDraws_gq_test_vec_len_1) {
       sample_writer);
   EXPECT_EQ(return_code, stan::services::error_codes::OK);
   EXPECT_EQ(count_matches("y_est", sample_ss.str()), 5);
-  EXPECT_EQ(count_matches("\n", sample_ss.str()), 1001);
+  EXPECT_EQ(count_matches("\n", sample_ss.str()), 1004);
   match_csv_columns(multidim_csv.samples, sample_ss.str(), 1000, 0, 6);
 }

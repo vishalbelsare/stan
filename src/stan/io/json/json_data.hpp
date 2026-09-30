@@ -28,7 +28,7 @@ namespace json {
  * <p>The dimensions and values of variables are accessed by variable name.
  * The values of a variable are stored as a vector of values and
  * a vector of array dimensions, where a scalar value consists of
- * a single value and an emtpy vector for the dimensionality.
+ * a single value and an empty vector for the dimensionality.
  * Multidimensional arrays are stored in column-major order,
  * meaning the first index changes the most quickly.
  * If all the values of an array are int values, the array will be
@@ -121,7 +121,7 @@ class json_data : public stan::io::var_context {
   }
 
   /**
-   * Read out the complex values for the variable with the specifed
+   * Read out the complex values for the variable with the specified
    * name and return a flat vector of complex values.
    *
    * @param name Name of Variable of type string.
@@ -243,32 +243,17 @@ class json_data : public stan::io::var_context {
   void validate_dims(const std::string &stage, const std::string &name,
                      const std::string &base_type,
                      const std::vector<size_t> &dims_declared) const {
-    bool is_int_type = base_type == "int";
-    if (is_int_type) {
-      if (!contains_i(name)) {
-        std::stringstream msg;
-        msg << (contains_r(name) ? "int variable contained non-int values"
-                                 : "variable does not exist")
-            << "; processing stage=" << stage << "; variable name=" << name
-            << "; base type=" << base_type;
-        throw std::runtime_error(msg.str());
-      }
-    } else {
-      if (!contains_r(name)) {
-        std::stringstream msg;
-        msg << "variable does not exist"
-            << "; processing stage=" << stage << "; variable name=" << name
-            << "; base type=" << base_type;
-        throw std::runtime_error(msg.str());
-      }
-    }
-
     std::vector<size_t> dims = dims_r(name);
 
     // JSON '[ ]' is ambiguous - any multi-dim variable with len 0 dim
     size_t num_elements = 1;
-    for (size_t i = 0; i < dims.size(); ++i) {
-      num_elements *= dims[i];
+    if (dims.size() == 0) {
+      // treat non-existent variables as size-0 objects
+      num_elements = 0;
+    } else {
+      for (size_t i = 0; i < dims.size(); ++i) {
+        num_elements *= dims[i];
+      }
     }
 
     size_t num_elements_expected = 1;
@@ -298,6 +283,26 @@ class json_data : public stan::io::var_context {
         dims_msg(msg, dims_declared);
         msg << "; dims found=";
         dims_msg(msg, dims);
+        throw std::runtime_error(msg.str());
+      }
+    }
+
+    bool is_int_type = base_type == "int";
+    if (is_int_type) {
+      if (!contains_i(name)) {
+        std::stringstream msg;
+        msg << (contains_r(name) ? "int variable contained non-int values"
+                                 : "variable does not exist")
+            << "; processing stage=" << stage << "; variable name=" << name
+            << "; base type=" << base_type;
+        throw std::runtime_error(msg.str());
+      }
+    } else {
+      if (!contains_r(name)) {
+        std::stringstream msg;
+        msg << "variable does not exist"
+            << "; processing stage=" << stage << "; variable name=" << name
+            << "; base type=" << base_type;
         throw std::runtime_error(msg.str());
       }
     }

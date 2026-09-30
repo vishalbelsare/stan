@@ -1,7 +1,6 @@
 #ifndef STAN_SERVICES_UTIL_GENERATE_TRANSITIONS_HPP
 #define STAN_SERVICES_UTIL_GENERATE_TRANSITIONS_HPP
 
-#include <stan/callbacks/writer.hpp>
 #include <stan/callbacks/interrupt.hpp>
 #include <stan/mcmc/base_mcmc.hpp>
 #include <stan/services/util/mcmc_writer.hpp>
@@ -36,6 +35,7 @@ namespace util {
  * @param[in,out] base_rng random number generator
  * @param[in,out] callback interrupt callback called once an iteration
  * @param[in,out] logger logger for messages
+ * @param[in] chain_id The id of the current chain, used in output.
  * @param[in] num_chains The number of chains used in the program. This
  *  is used in generate transitions to print out the chain number.
  */

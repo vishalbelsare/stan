@@ -100,9 +100,9 @@ TEST(ModelIndexing, rvalue_vector_min_nil) {
       EXPECT_FLOAT_EQ(x[n + k], rx[n]);
   }
 
-  EXPECT_THROW(rvalue(x, "", index_min(7)), std::domain_error);
+  EXPECT_EQ(0, rvalue(x, "", index_min(7)).size());
 
-  // test_out_of_range(x, index_min(0));
+  test_out_of_range(x, index_min(0));
 }
 
 TEST(ModelIndexing, rvalue_eigen_vector_min_nil) {
@@ -115,7 +115,7 @@ TEST(ModelIndexing, rvalue_eigen_vector_min_nil) {
       EXPECT_FLOAT_EQ(x[n + k - 1], rx[n]);
   }
 
-  test_out_of_range(x, index_min(7));
+  EXPECT_EQ(0, rvalue(x, "", index_min(7)).size());
   test_out_of_range(x, index_min(0));
 }
 
@@ -185,7 +185,7 @@ TEST(ModelIndexing, rvalue_eigenvec_min_max_nil) {
   x(1) = 2.2;
   x(2) = 3.3;
   x(3) = 4.4;
-  // min > max
+  // min < max
   for (int mn = 0; mn < 4; ++mn) {
     for (int mx = mn; mx < 4; ++mx) {
       Eigen::Matrix<double, -1, 1> rx
@@ -196,21 +196,31 @@ TEST(ModelIndexing, rvalue_eigenvec_min_max_nil) {
     }
   }
 
-  // max > min
-  for (int mn = 3; mn > -1; --mn) {
-    for (int mx = mn; mx > -1; --mx) {
+  // min > max, including min > size
+  for (int mn = 5; mn > -1; --mn) {
+    for (int mx = mn - 1; mx > -1; --mx) {
       Eigen::Matrix<double, -1, 1> rx
           = rvalue(x, "", index_min_max(mn + 1, mx + 1));
-      if (mn == mx) {
-        EXPECT_FLOAT_EQ(1, rx.size());
-      } else {
-        EXPECT_FLOAT_EQ(0, rx.size());
-      }
+      EXPECT_FLOAT_EQ(0, rx.size());
     }
+  }
+
+  // min == max
+  for (int mn = 3; mn > -1; --mn) {
+    Eigen::Matrix<double, -1, 1> rx
+        = rvalue(x, "", index_min_max(mn + 1, mn + 1));
+    EXPECT_FLOAT_EQ(1, rx.size());
   }
 
   test_out_of_range(x, index_min_max(0, 2));
   test_out_of_range(x, index_min_max(2, 5));
+
+  // empty min-max on empty vectors
+  Eigen::Matrix<double, -1, 1> z(0);
+  EXPECT_EQ(0, rvalue(z, "", index_min_max(1, 0)).size());
+  EXPECT_EQ(0,
+            rvalue(rvalue(x, "", index_min_max(2, 1)), "", index_min_max(1, 0))
+                .size());
 }
 
 TEST(ModelIndexing, rvalue_doubless_uni_uni) {
@@ -292,7 +302,7 @@ TEST(ModelIndexing, rvalue_doubless_uni_multi) {
   EXPECT_FLOAT_EQ(1.1, y[0]);
 
   empty_y = rvalue(x, "", index_uni(1), index_min_max(3, 1));
-  EXPECT_EQ(0U, empty_y.size());
+  EXPECT_EQ(0, empty_y.size());
 
   y = rvalue(x, "", index_uni(3), index_omni());
   EXPECT_EQ(3, y.size());

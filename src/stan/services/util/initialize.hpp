@@ -36,8 +36,8 @@ namespace util {
  *
  * When at least some of the initialization is random, it will
  * randomly initialize until it finds a set of unconstrained
- * parameters that are valid or it hits <code>MAX_INIT_TRIES =
- * 100</code> (hard-coded).
+ * parameters that are valid or it hits <code>max_tries</code>,
+ * which defaults to 100.
  *
  * Valid initialization is defined as a finite, non-NaN value for the
  * evaluation of the log probability density function and all its
@@ -58,6 +58,8 @@ namespace util {
  *   be printed to the logger
  * @param[in,out] logger logger for messages
  * @param[in,out] init_writer init writer (on the unconstrained scale)
+ * @param[in] max_tries The maximum number of times a random initialization
+ *   will be re-tried to achieve a finite log density and gradient. Default 100.
  * @throws exception passed through from the model if the model has a
  *   fatal error (not a std::domain_error)
  * @throws std::domain_error if the model can not be initialized and
@@ -70,14 +72,15 @@ template <bool Jacobian = true, typename Model, typename InitContext,
 std::vector<double> initialize(Model& model, const InitContext& init, RNG& rng,
                                double init_radius, bool print_timing,
                                stan::callbacks::logger& logger,
-                               stan::callbacks::writer& init_writer) {
+                               stan::callbacks::writer& init_writer,
+                               int max_tries = 100) {
   std::vector<double> unconstrained;
   std::vector<int> disc_vector;
 
   bool is_fully_initialized = true;
   bool any_initialized = false;
   std::vector<std::string> param_names;
-  model.get_param_names(param_names);
+  model.get_param_names(param_names, false, false);
   for (size_t n = 0; n < param_names.size(); n++) {
     is_fully_initialized &= init.contains_r(param_names[n]);
     any_initialized |= init.contains_r(param_names[n]);
@@ -86,7 +89,7 @@ std::vector<double> initialize(Model& model, const InitContext& init, RNG& rng,
   bool is_initialized_with_zero = init_radius == 0.0;
 
   int MAX_INIT_TRIES
-      = is_fully_initialized || is_initialized_with_zero ? 1 : 100;
+      = is_fully_initialized || is_initialized_with_zero ? 1 : max_tries;
   int num_init_tries = 0;
   for (; num_init_tries < MAX_INIT_TRIES; num_init_tries++) {
     std::stringstream msg;
@@ -102,21 +105,22 @@ std::vector<double> initialize(Model& model, const InitContext& init, RNG& rng,
         model.transform_inits(context, disc_vector, unconstrained, &msg);
       }
     } catch (std::domain_error& e) {
-      if (msg.str().length() > 0)
+      if (msg.str().length() > 0) {
         logger.info(msg);
-      logger.info("Rejecting initial value:");
-      logger.info(
+      }
+      logger.warn("Rejecting initial value:");
+      logger.warn(
           "  Error evaluating the log probability"
           " at the initial value.");
-      logger.info(e.what());
+      logger.warn(e.what());
       continue;
     } catch (std::exception& e) {
-      if (msg.str().length() > 0)
+      if (msg.str().length() > 0) {
         logger.info(msg);
-      logger.info(
+      }
+      logger.error(
           "Unrecoverable error evaluating the log probability"
           " at the initial value.");
-      logger.info(e.what());
       throw;
     }
 
@@ -128,32 +132,33 @@ std::vector<double> initialize(Model& model, const InitContext& init, RNG& rng,
       // the parameters.
       log_prob = model.template log_prob<false, Jacobian>(unconstrained,
                                                           disc_vector, &msg);
-      if (msg.str().length() > 0)
+      if (msg.str().length() > 0) {
         logger.info(msg);
+      }
     } catch (std::domain_error& e) {
       if (msg.str().length() > 0)
         logger.info(msg);
-      logger.info("Rejecting initial value:");
-      logger.info(
+      logger.warn("Rejecting initial value:");
+      logger.warn(
           "  Error evaluating the log probability"
           " at the initial value.");
-      logger.info(e.what());
+      logger.warn(e.what());
       continue;
     } catch (std::exception& e) {
-      if (msg.str().length() > 0)
+      if (msg.str().length() > 0) {
         logger.info(msg);
-      logger.info(
+      }
+      logger.error(
           "Unrecoverable error evaluating the log probability"
           " at the initial value.");
-      logger.info(e.what());
       throw;
     }
     if (!std::isfinite(log_prob)) {
-      logger.info("Rejecting initial value:");
-      logger.info(
+      logger.warn("Rejecting initial value:");
+      logger.warn(
           "  Log probability evaluates to log(0),"
           " i.e. negative infinity.");
-      logger.info(
+      logger.warn(
           "  Stan can't start sampling from this"
           " initial value.");
       continue;
@@ -167,9 +172,10 @@ std::vector<double> initialize(Model& model, const InitContext& init, RNG& rng,
       log_prob = stan::model::log_prob_grad<true, Jacobian>(
           model, unconstrained, disc_vector, gradient, &log_prob_msg);
     } catch (const std::exception& e) {
-      if (log_prob_msg.str().length() > 0)
+      if (log_prob_msg.str().length() > 0) {
         logger.info(log_prob_msg);
-      logger.info(e.what());
+      }
+      logger.error(e.what());
       throw;
     }
     auto end = std::chrono::steady_clock::now();
@@ -183,11 +189,11 @@ std::vector<double> initialize(Model& model, const InitContext& init, RNG& rng,
     bool gradient_ok = std::isfinite(stan::math::sum(gradient));
 
     if (!gradient_ok) {
-      logger.info("Rejecting initial value:");
-      logger.info(
+      logger.warn("Rejecting initial value:");
+      logger.warn(
           "  Gradient evaluated at the initial value"
           " is not finite.");
-      logger.info(
+      logger.warn(
           "  Stan can't start sampling from this"
           " initial value.");
     }
@@ -212,15 +218,43 @@ std::vector<double> initialize(Model& model, const InitContext& init, RNG& rng,
       return unconstrained;
     }
   }
-
-  if (!is_initialized_with_zero) {
+  if (is_fully_initialized) {
+    logger.info("");
+    logger.error("User-specified initialization failed.");
+    logger.error(
+        " Try specifying new initial values,"
+        " using partially specialized initialization,"
+        " reducing the range of constrained values,"
+        " or reparameterizing the model.");
+  } else if (any_initialized) {
+    logger.info("");
+    std::stringstream msg;
+    msg << "Partial user-specified initialization failed. "
+           "Initialization of non user specified parameters "
+           "between (-"
+        << init_radius << ", " << init_radius << ") failed after"
+        << " " << MAX_INIT_TRIES << " attempts. ";
+    logger.error(msg);
+    logger.error(
+        " Try specifying full initial values,"
+        " reducing the range of constrained values,"
+        " or reparameterizing the model.");
+  } else if (is_initialized_with_zero) {
+    logger.info("");
+    logger.error("Initial values of 0 failed to initialize.");
+    logger.error(
+        " Try specifying new initial values,"
+        " using partially specialized initialization,"
+        " reducing the range of constrained values,"
+        " or reparameterizing the model.");
+  } else {
     logger.info("");
     std::stringstream msg;
     msg << "Initialization between (-" << init_radius << ", " << init_radius
         << ") failed after"
         << " " << MAX_INIT_TRIES << " attempts. ";
-    logger.info(msg);
-    logger.info(
+    logger.error(msg);
+    logger.error(
         " Try specifying initial values,"
         " reducing ranges of constrained values,"
         " or reparameterizing the model.");
